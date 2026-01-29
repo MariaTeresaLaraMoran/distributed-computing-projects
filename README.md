@@ -13,9 +13,9 @@ This repository contains projects and experiments exploring distributed systems 
 
 ## About Me
 
-**Name:** [Your Name]  
+**Name:** Maria T Lara Moran
 **Course:** Distributed Computing  
-**Semester:** [Current Semester]
+**Semester:** Spring 2026
 
 ## Projects
 
