@@ -1,2 +1,27 @@
 # distributed-computing-projects
-Public projects for Distributed Computing class
+# Distributed Computing Projects
+
+Welcome to my public project portfolio for the Distributed Computing class!
+
+## About This Repository
+
+This repository contains projects and experiments exploring distributed systems concepts:
+- Git and version control
+- GitHub Pages and web hosting
+- Distributed workflows
+- And more to come!
+
+## About Me
+
+**Name:** [Your Name]  
+**Course:** Distributed Computing  
+**Semester:** [Current Semester]
+
+## Projects
+
+Coming soon!
+
+---
+Last update 01/26/2026
+
+
