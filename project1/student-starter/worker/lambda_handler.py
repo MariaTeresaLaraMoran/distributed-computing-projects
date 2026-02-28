@@ -93,7 +93,7 @@ DEVICE_BONUS = {
 # ---------------------------------------------------------------------------
 # Task 1: Scoring Function
 # ---------------------------------------------------------------------------
-
+    
 def compute_score(bid, opportunity):
     """
     Compute the quality-adjusted score for a single bid.
@@ -113,9 +113,49 @@ def compute_score(bid, opportunity):
         - What if the category combination is not in RELEVANCE_MAP?
         - What if the timestamp cannot be parsed?
     """
-    # YOUR CODE HERE
-    raise NotImplementedError("Task 1: Implement compute_score")
+    
+    try:
+        bid_amount = float(bid.get("bid_amount", 0))
+        if bid_amount <= 0:
+            return 0.0
 
+        advertiser_category = bid.get("category", "")
+        content_category = opportunity.get("content_category", "")
+        device_type = opportunity.get("device_type", "").lower()
+        timestamp_str = opportunity.get("timestamp", "")
+
+        # Relevance multiplier
+        relevance_multiplier = RELEVANCE_MAP.get(
+            (content_category, advertiser_category),
+            1.0
+        )
+
+        # Time bonus
+        try:
+            if timestamp_str.endswith("Z"):
+                timestamp_str = timestamp_str.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(timestamp_str)
+            dt = dt.astimezone(timezone.utc)
+            hour = dt.hour
+        except Exception:
+            hour = None
+
+        time_bonus = 1.0
+        if hour is not None:
+            for start, end, bonus in TIME_WINDOWS:
+                if start <= hour < end:
+                    time_bonus = bonus
+                    break
+
+        # Device bonus
+        device_bonus = DEVICE_BONUS.get(device_type, 1.0)
+
+        score = bid_amount * relevance_multiplier * time_bonus * device_bonus
+        return float(score)
+
+    except Exception as e:
+        logger.warning("Error computing score: %s", e)
+        return 0.0
 
 # ---------------------------------------------------------------------------
 # Task 2: Winner Selection
@@ -141,8 +181,31 @@ def select_winner(opportunity):
         - Find the highest score (the winner) and second-highest score
         - Return the result dict with all four fields
     """
-    # YOUR CODE HERE
-    raise NotImplementedError("Task 2: Implement select_winner")
+    bids = opportunity.get("bids", [])
+    if not bids:
+        return None
+
+    scored_bids = []
+
+    for bid in bids:
+        score = compute_score(bid, opportunity)
+        if score > 0:
+            scored_bids.append((score, bid))
+
+    if not scored_bids:
+        return None
+
+    scored_bids.sort(key=lambda x: x[0], reverse=True)
+
+    winning_score, winning_bid = scored_bids[0]
+    second_score = scored_bids[1][0] if len(scored_bids) > 1 else 0.0
+
+    return {
+        "winning_advertiser_id": winning_bid.get("advertiser_id"),
+        "winning_bid_amount": float(winning_bid.get("bid_amount", 0)),
+        "winning_score": float(winning_score),
+        "score_margin": float(winning_score - second_score),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -182,9 +245,48 @@ def process_opportunity(opportunity):
 
     TODO: Implement this function.
     """
-    # YOUR CODE HERE
-    raise NotImplementedError("Task 3: Implement process_opportunity")
+    start = time.perf_counter()
 
+    winner = select_winner(opportunity)
+    if winner is None:
+        return None
+
+    processed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    result = {
+        "opportunity_id": opportunity.get("opportunity_id"),
+        "content_category": opportunity.get("content_category"),
+        "winning_advertiser_id": winner["winning_advertiser_id"],
+        "winning_bid_amount": winner["winning_bid_amount"],
+        "winning_score": winner["winning_score"],
+        "score_margin": winner["score_margin"],
+        "processed_at": processed_at,
+    }
+
+    # Send to results queue
+    if RESULTS_QUEUE_URL:
+        sqs.send_message(
+            QueueUrl=RESULTS_QUEUE_URL,
+            MessageBody=json.dumps(result)
+        )
+
+    # Write to DynamoDB
+    if DYNAMO_TABLE_NAME:
+        table = dynamodb.Table(DYNAMO_TABLE_NAME)
+        item = {
+            k: Decimal(str(v)) if isinstance(v, float) else v
+            for k, v in result.items()
+        }
+        table.put_item(Item=item)
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "Processed opportunity %s in %.1f ms",
+        result["opportunity_id"],
+        elapsed_ms
+    )
+
+    return result
 
 # ---------------------------------------------------------------------------
 # Task 4: Lambda Entry Point with Batch Processing
@@ -223,5 +325,27 @@ def lambda_handler(event, context):
 
     TODO: Implement this function.
     """
-    # YOUR CODE HERE
-    raise NotImplementedError("Task 4: Implement lambda_handler")
+    start = time.perf_counter()
+    failures = []
+
+    records = event.get("Records", [])
+
+    for record in records:
+        message_id = record.get("messageId","unknown")
+        try:
+            body = json.loads(record.get("body", "{}"))
+            process_opportunity(body)
+
+        except Exception as e:
+            logger.error("Failed processing message %s: %s", message_id, e)
+            failures.append({"itemIdentifier": message_id})
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "Batch complete. Records=%d Failures=%d Time=%.1f ms",
+        len(records),
+        len(failures),
+        elapsed_ms
+    )
+
+    return {"batchItemFailures": failures}
