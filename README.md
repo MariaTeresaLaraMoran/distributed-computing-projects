@@ -1,4 +1,4 @@
-# distributed-computing-projects
+
 # Distributed Computing Projects
 
 Welcome to my public project portfolio for the Distributed Computing class!
@@ -9,6 +9,8 @@ This repository contains projects and experiments exploring distributed systems 
 - Git and version control
 - GitHub Pages and web hosting
 - Distributed workflows
+- Lambda handlers and SQS queues
+- Databricks SQl
 - And more to come!
 
 ## About Me
